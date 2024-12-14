@@ -337,5 +337,6 @@ ax.view_init(elev=20, azim=-70, roll=0)
 fig.show()
 ```
 <p align="center">
-  <img src="image-2.png" alt="In the 3d chart above, if you take the Tenor 0 values for all simulation times, you will get the short rate simulation for that scenario (scenario 502)">
+  <img src="Surface.png", width = "500", height = "300">
+    <figcaption> <i>In the 3d chart above, if you take the Tenor 0 values for all simulation times, you will get the short rate simulation for that scenario (scenario 502) </i></figcaption>
 </p>
