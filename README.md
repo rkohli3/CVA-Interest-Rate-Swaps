@@ -38,20 +38,27 @@ $$
 
 ### Key Components
 1. **Mean-Reverting Drift**:
-   $$
-   r_0 \cdot e^{-\alpha t}
-   $$
+
+
+$$
+r_0 \cdot e^{-\alpha t}
+$$
 
 2. **Drift Adjustment for Term Structure**:
-   $$
-   g(t) = f(0, t) + \frac{\sigma^2}{2 \alpha^2} \cdot \left(1 - e^{-\alpha t}\right)^2
-   $$
-   - $f(0, t)$: Instantaneous forward rate at $t$ derived from the initial term structure.
+
+
+$$
+g(t) = f(0, t) + \frac{\sigma^2}{2 \alpha^2} \cdot \left(1 - e^{-\alpha t}\right)^2
+$$
+
+- $f(0, t)$: Instantaneous forward rate at $t$ derived from the initial term structure.
 
 3. **Stochastic Component**:
-   $$
-   \sigma \int_0^t e^{-\alpha (t - u)} \, dW(u)
-   $$
+
+
+$$
+\sigma \int_0^t e^{-\alpha (t - u)} \, dW(u)
+$$
 
 ---
 
@@ -118,42 +125,63 @@ ratesStoch.sample(50, axis = 1).plot(figsize = (12, 5), alpha = 0.7, legend=Fals
 
 ### 2. Exponential Decay Factors
 - **Exponential decay factors**:
-   $$ 
-   e^{-\alpha \Delta t} 
-   $$
-   Captures the exponential decay of the mean-reverting drift.
+
+
+$$ 
+e^{-\alpha \Delta t} 
+$$
+
+
+Captures the exponential decay of the mean-reverting drift.
 
 - **Exponential decay matrix**:
-   $$
-   e^{-\alpha (t_i - t_j)}
-   $$
-   Computes decay terms for $t_j \leq t_i$.
+
+
+$$
+e^{-\alpha (t_i - t_j)}
+$$
+
+
+Computes decay terms for $t_j \leq t_i$. i python it can depicted using the syntax ```t[:, None] - t[None, :]``` and then chosing the lower triangle so that 
+you don't choose the matuirties beyond the date of simulation ```np.tril(exp_decay_matrix```
 
 ---
 
 ### 3. Stochastic Component
 - **Brownian Motion Increments**:
-   $$
-   \Delta W \sim \mathcal{N}(0, \sqrt{\Delta t})
-   $$
+
+
+$$
+\Delta W \sim \mathcal{N}(0, \sqrt{\Delta t})
+$$
 
 - **Stochastic Integral Approximation**:
-   $$
-   \sigma \int_0^t e^{-\alpha (t - u)} \, dW(u)
-   $$
+
+
+$$
+\sigma \int_0^t e^{-\alpha (t - u)} \, dW(u)
+$$
+
+
 
 ---
 
 ### 4. Drift and Final Short Rate
 - **Drift**:
-   $$
-   r_0 \cdot e^{-\alpha t} + g(t) - g(0)
-   $$
+
+
+$$
+r_0 \cdot e^{-\alpha t} + g(t) - g(0)
+$$
+
+
 
 - **Final Short Rate**:
-   $$
-   r(t) = \text{Drift} + \text{Stochastic}
-   $$
+
+
+$$
+r(t) = \text{Drift} + \text{Stochastic}
+$$
 
 ---
 
@@ -308,5 +336,6 @@ ax.set_title("Surface Plot for Hull White Term Structure")
 ax.view_init(elev=20, azim=-70, roll=0)
 fig.show()
 ```
-![alt text](image-2.png)
-*In the 3d chart above, if you take the Tenor 0 values for all simulation times, you will get the short rate simulation for that scenario (scenario 502)*
+<p align="center">
+  <img src="image-2.png" alt="In the 3d chart above, if you take the Tenor 0 values for all simulation times, you will get the short rate simulation for that scenario (scenario 502)">
+</p>
