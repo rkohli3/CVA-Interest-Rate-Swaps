@@ -526,7 +526,7 @@ The way that I've calculated portfolio exposure is to take the positive exposure
 
 
 <p align="center">
-  <img src="Exposureprofile.png", width = "800", height = "500">
+  <img src="ExposureProfile.png", width = "800", height = "500">
     
 </p>
 
