@@ -4,7 +4,7 @@ I am unable to recall what really prompted me to do this, but I have always been
 
 Interest Rate Swaps are derivative contracts where a trader/speculator/hedger wants to gain/hedge exposure from rising/falling interest rates. These are Over the Counter (OTC) contracts where a Counterparty agrees to swap series of Fixed Interest payments on a notional value for a series of Floating Interest Rates on the same notional. Just like any other contract, the value of a derivative contract at inception should be Zero since there should be no free lunch albeit Arbitrage, but how does one simulate the exposure (value/Mark-to-Market) of this Interest Rate Swap as a walk forward into the future. That's where we use **Hull-White 1-Factor Model**, a widely used model for interest rate dynamics. Below, we explain the mathematical foundations and their implementation in the code.
 
-The code below utilizes vectorization as much as possible. There were certain loops I just couldn't avoid. Vectorization was faster by a magnitude of 20x at least. 
+ <b> *Note:* </b> <u> The code below utilizes vectorization as much as possible. There were certain loops I just couldn't avoid. Vectorization was faster by a magnitude of 20x at least. </u>
 
 ---
 
@@ -337,6 +337,214 @@ ax.view_init(elev=20, azim=-70, roll=0)
 fig.show()
 ```
 <p align="center">
-  <img src="Surface.png", width = "500", height = "300">
+  <img src="Surface.png", width = "600", height = "400">
     <figcaption> <i>In the 3d chart above, if you take the Tenor 0 values for all simulation times, you will get the short rate simulation for that scenario (scenario 502) </i></figcaption>
 </p>
+
+----
+
+Now of course there are 5000 of these surfaces you could create, but for demonstration purposes, as you move forward (right in the graph) through simulation time, each point then becomes the valuation date and you calculate the swap value as of that time based on the interest rate term structure
+# Calcululating Swap Value and CVAs
+
+
+## Step 1: Read the swap file
+
+We first read the swap file and transform data for simplicity. Remember, each swap has a floating leg and a fixed rate leg, which corresponds to receiving or paying interest. This is represented by leg type column in the table.
+
+| CounterpartyID | NettingID | Principal | Maturity | LegType | LegRateReceiving | LegRatePaying | LatestFloatingRate | Period |
+| -------------- | --------- | --------- | -------- | ------- | ---------------- | ------------- | ------------------ | ------ |
+| 5              | 5         | 813450    | 733921   | 1       | 0.036134726      | 10            | 0.03462651         | 1      |
+| 5              |           | 441321    | 733873   | 0       | 87               | 0.039251637   | 0.033598155        | 1      |
+| 1              |           | 629468    | 734917   | 1       | 0.038682219      | 0             | 0.035674961        | 1      |
+| 5              |           | 774308    | 735461   | 0       | 70               | 0.046303151   | 0.035364042        | 1      |
+| 4              |           | 918177    | 735800   | 1       | 0.047524758      | 74            | 0.034985981        | 1      |
+| 1              | 1         | 969469    | 734039   | 0       | 78               | 0.040000628   | 0.03497566         | 1      |
+| 2              | 2         | 660412    | 735001   | 0       | 8                | 0.0395239     | 0.034441285        | 1      |
+| 3              |           | 353968    | 734783   | 1       | 0.041441865      | 36            | 0.03571308         | 1      |
+| 5              | 5         | 361971    | 733781   | 1       | 0.036346283      | 23            | 0.034906748        | 1      |
+....
+
+Since the Period for each swap is 1, that implies the floating rate is reset annually, i.e, the payments are made/received every year with floating rate resetting at that date. LegType 1 means that the Leg Rate Receving is fixed and Leg Rate paying is a spread of 10bps above the floating rate at the time of reset. The *LatestFloatingRate* column shows the rate set at the last reset date. Thus, as we move in time (simulation time), we will have to calculate how the floating rate changes. For eg, let's say for simplicity, if today is October 1, 20x4 and the rate is reset every 31 December, then the last reset date was December 31, 20x3. Similarly, when we move through simulation time and the ```simTime``` is now January 31, 20x5, we will have to extrapolate or interpolate whatever the floating rate would have been on Decmber 31, 20x4. 
+
+## Step 2: Generate Cash Flow Dates
+
+This step involves generating dates when cash flows are exchange and when the floating rate is reset. We use the function ```genCFDates``` to do that.
+This function generates cash flow dates and determines the last reset date for each simulation time.
+
+**Notation:**
+ - **Cash Flow Dates:** These are generated backward from maturity to settlement:
+  $$
+  \text{Cash Flow Dates} = \left[ T_i \, | \, T_i = T_{\text{maturity}} - \frac{k}{\text{freq}}, \, k = 0, 1, \ldots \right]
+  $$
+  Here:
+  - $T_i$: Represents each cash flow date.
+  - $\text{freq}$: The frequency of payments (e.g., annual, semi-annual, quarterly).
+
+- **Last Reset Date:** The last reset date at any simulation time \( t_{\text{sim}} \) is determined as:
+  $$
+  \text{Last Reset Date} = \max \{ T_j \, | \, T_j \leq t_{\text{sim}} \}
+  $$
+  Here:
+  - $T_j$: Represents a specific cash flow date.
+  - $t_{\text{sim}}$: The current simulation time.
+
+The function ensures that the last reset date remains consistent with the simulation timeline and adjusts based on the $T_j$ values.
+
+In all cases, we will be using year fraction with day count $365$
+
+
+```python
+baseDate = datetime.datetime(16,1,1)
+def genCFDates(maturity, legReset):
+    floatDates = generateCashFlowDates(startDate - datetime.timedelta(365), maturity, legReset)
+    cashFlowDates = np.array([(date - startDate).days/365 for date in floatDates][1:])
+
+    lastResetDate = np.full(len(simTimes), cashFlowDates[0])
+    cfIndex = 1
+    for i, t in enumerate(simTimes):
+        if cfIndex < len(cashFlowDates):
+            if simTimes[i] < cashFlowDates[cfIndex]:
+                lastResetDate[i] = cashFlowDates[cfIndex-1]
+            else:
+                cfIndex += 1
+                lastResetDate[i] = cashFlowDates[cfIndex-1]
+        else:
+            lastResetDate[i] = lastResetDate[i-1]
+
+    return cashFlowDates, lastResetDate
+
+def generateCashFlowDates(settlementDate, maturityDate, frequency):
+    """
+    Generate cash flow dates.
+    
+    Parameters:
+    - settlementDate (datetime): The start date of the cash flows.
+    - maturityDate (datetime): The end date or maturity date.
+    - frequency (int): The number of payments per year (1 for annual, 2 for semi-annual, 4 for quarterly, etc.).
+    
+    Returns:
+    - list of datetime: List of cash flow dates from settlement to maturity.
+    """
+    # Calculate the interval in months between payments
+    months = 12 // frequency
+
+    # Generate cash flow dates by moving backwards from maturity to settlement
+    dates = []
+    currentDate = maturityDate
+    while currentDate > settlementDate:
+        dates.append(currentDate)
+        currentDate -= relativedelta(months=months)
+
+    dates.append(settlementDate)  # Include the settlement date as the first date if needed
+    dates = sorted(dates)  # Sort dates in ascending order
+    
+    return dates
+
+swapCouponDates = {}
+swapLastResetDate = np.zeros(shape = (len(swaps), len(simTimes)))
+for idx, swap in swaps.iterrows():
+    swapCFDates, swapLastResetDate[idx, :] = genCFDates(swap.Maturity, swap.Period)
+    swapCouponDates[swap.name] = swapCFDates
+
+```
+
+There are 30 swaps, and for each swap at each sim time, we want to know what the last floating rate was. The output for simTime and swapLastResetDate looks like below for swap number 4
+
+Sim Time Number | Last Reset Date | Sim Time |
+| --------------- | --------------- | -------- |
+| 1               | \-0.38          | 0.000    |
+| 2               | \-0.38          | 0.019    |
+| 3               | \-0.38          | 0.038    |
+| 4               | \-0.38          | 0.058    |
+| 5               | \-0.38          | 0.077    |
+| ....            
+| 32              | \-0.38          | 0.596    |
+| 33              | \-0.38          | 0.615    |
+| 34              | 0.62            | 0.635    |
+| 35              | 0.62            | 0.654    |
+| 36              | 0.62            | 0.673    |
+| 37              | 0.62            | 0.692    |
+| 38              | 0.62            | 0.712    |
+|...
+| 84              | 0.62            | 1.596    |
+| 85              | 0.62            | 1.615    |
+| 86              | 1.62            | 1.635    |
+| 87              | 1.62            | 1.654    |
+|...
+
+
+
+## Step 3: Find the Floating Rate at the last reset date
+Per the table, on the first simulation date, the last reset done was $\approx 0.38$ years ago, based on swap data. We utilize the scipy.interpolate to find what the 1 year rates (since period is 1) would be at each reset date (based on the simulations we've done for each tenor and each sim date) and allow for left bound (minimum) values to the ones that are provided to us in the swap data. For example, when we're at sim Time 2 years let's, say and the floating rate was just reset, the interpolator will be calculating the 1 year tenor rate at that sim time. We do this becasue we don't have the exact rate for 1 year tenor at each sim date.
+
+``` python
+def computeIRSMtM(swaps, simTimes, zeroRates, tenors, lastResetDate):
+    oneYrindex = np.where(tenors == 1)[0][0]
+    oneYrRates = zeroRates[:, oneYrindex]
+
+    latestFloatingRates = np.zeros(shape = (len(simTimes), swaps.shape[0], zeroRates.shape[2]))
+
+    for idx, swap in swaps.iterrows():
+        # at every last reset date you're interpolating the 1 year rate based on the interpolation of zero rates from simTime
+        # This gives us the floating rate that was set at the reset date, which will be the first coupon of floating leg
+        interpolator = interp1d(simTimes, oneYrRates, kind='linear', fill_value=swap.LatestFloatingRate, bounds_error=False, axis = 0)
+        latestFloatingRates[:, idx] = interpolator(lastResetDate[idx])
+....
+```
+
+If you go back to the surface plot, we're trying to find the points on the line across $\text 1 \space year \space Tenor$ from left to right. The latestFloatingRate has a shape of $(365,30)$ where 365 is the simulation time points (weekly for 7 years) and 30 swaps. 
+
+## Step4: Compute Mark-to-Market for Swaps
+
+Now that we have figured out what the floating reset dates were at the prior reset date for each simulation date, we can calculate the value of the swaps at each simulation date for each of the 5000 simulations. 
+
+Note, by the no arbitrage theory, the swap value at inception is 0, therefore, any value henceforth is the MtM of that swap. 
+
+For reference, I am using the methodology provided in *Options, Futures, and Other Derivatives* by John Hull. And to be even more speicifc, I am using the methodology where you treat swaps as an exchange of Forward Rate Agreements (FRA). You can also use the valuation of swaps by treating them as bonds with fixed and floating coupons, noting that the value of the floatig bond right before the payment is the notional value. 
+
+**I use the function ```computeIRSMtM``` to caluclate the the values of swaps.**
+
+
+---
+<p align="center">
+  <img src="MtMSwaps.png", width = "800", height = "500">
+    
+</p>
+
+
+---
+The chart above shows the Mark-to-Market of swap number 28 for 200 trajectories and the Positive Exposure. As the swap approaches maturity, the MtM converges to 0. The simulation number here is the trajectory number. 
+
+## Step 5: Compute porfolio stats and CVA
+
+The function ```computeIRSMtM``` gives us a distribution of MtM values for all swaps for 5000 trajectories and 365 simulation dates. Generally speaking, CVA is calculated on the Expected Positive exposure, which is the mean of positive exposure at any point. 
+
+
+I perform this exercise for all counterparties and sum the values across all swaps for a counterparty. *Note:* For counterparties where netting is allowed, I sum both the positive and negative values of swaps whereas I aggregate only the positive values of swaps where there is no netting allowed. 
+
+The way that I've calculated portfolio exposure is to take the positive exposure only, syou can decide to include all values for netted and non netted swaps and from there calculate expected positive exposure and expected exposure. By using my methodology, your expected exposure will be the same as expected positive exposure, as the graph below shows
+
+
+<p align="center">
+  <img src="ExposureProfile.png", width = "800", height = "500">
+    
+</p>
+
+
+## Step 6: Finale － Calculate CVA
+
+$$
+\text{CVA} = (1-R) \int_0^T discEE(t)dPD(t)
+$$
+
+This can be be calculated using a discrete solution
+
+$$
+\text{CVA} \approx (1 - R) \sum_{i=1}^{N} \text{discEE}(t_i) \, \Delta \text{PD}(t_i)
+$$
+
+where 
+
+- $\Delta{PD} = PDt_{i+1} - PDt_i$
+
+- $discEE = Discounted\space Expected\space Positive\space Exposure$
