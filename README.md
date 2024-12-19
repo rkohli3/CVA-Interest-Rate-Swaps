@@ -548,3 +548,76 @@ where
 - $\Delta{PD} = PDt_{i+1} - PDt_i$
 
 - $discEE = Discounted\space Expected\space Positive\space Exposure$
+
+
+Question then becomes, <b>How do we then calculate the Probability of Default at time $t$</b>. This can be done by using market observable CDS spreads. Note for valuation of CDS, $PV\space Premium\space Leg = PV\space Payout\space leg$
+
+
+## 6.1. Premium Leg (Present Value of Premium Payments)
+
+The premium leg involves periodic premium payments based on the CDS spread $s$. The protection buyer makes these payments as long as the reference entity hasn’t defaulted by the payment date.
+
+For a small time interval $\Delta t$, the premium payment at time $t$ is given by:
+
+$$
+\text{Premium Payment at time } t = s \cdot N \cdot \Delta t
+$$
+
+The present value of the premium payment is discounted by the risk-free rate and weighted by the survival probability $S(t)$. Thus, the present value of the premium leg over the life of the CDS (from time $0$ to time $T$) is:
+
+$$
+\text{PV of Premium Leg} = s \cdot N \cdot \int_0^T S(t) \cdot e^{-r t} \, dt
+$$
+
+where:
+- $S(t) = 1 - p(t)$ is the survival probability at time $t$,
+- $e^{-r t}$ is the discount factor at time $t$.
+
+You can use the discrete solution for the above equation for a small interval $\Delta t$
+
+$$
+\text{PV of Premium Leg} = s \cdot N \cdot \sum_{i=1}^{N} S(t_i) \cdot e^{-r t_i} \cdot \Delta t
+$$
+
+## 6.2. Protection Leg (Present Value of Protection Payments)
+
+The protection leg involves payments that the protection seller makes in the event of a default. If default occurs at time $t$, the protection seller pays $N(1 - R)$, where $R$ is the recovery rate. The probability of default in the small interval $[t, t + \Delta t]$ is $p(t) - p(t - \Delta t)$, and the present value of the protection payment is discounted by the risk-free rate.
+
+Thus, the present value of the protection leg is:
+
+$$
+\text{PV of Protection Leg} = (1 - R) \cdot N \cdot \int_0^T p(t) \cdot e^{-r t} \, dt
+$$
+
+where:
+- $p(t)$ is the cumulative probability of default by time $t$,
+- $e^{-r t}$ is the discount factor at time $t$.
+
+
+Similarly for Protection Leg as well you could use the discrete version of the equation above: 
+
+$$
+\text{PV of Protection Leg} = (1 - R) \cdot N \cdot \sum_{i=1}^{N} p(t_i) \cdot e^{-r t_i} \cdot \Delta t
+$$
+
+## Summary of Key Components
+- $S(t) = 1 - p(t)$ is the survival probability at time $t$, where $p(t)$ is the cumulative probability of default by time $t$.
+- $r$ is the risk-free rate, assumed to be constant.
+- $R$ is the recovery rate (so $1 - R$ is the loss given default).
+
+## Interpretation
+- **Numerator**: The expected protection payouts, discounted by the risk-free rate and weighted by the probability of default.
+- **Denominator**: The expected premium payments, discounted by the risk-free rate and weighted by the survival probability.
+
+This gives us the formula for the CDS spread $s$ in terms of the probability of default $p(t)$, the recovery rate $R$, and the risk-free rate $r$.
+
+We utilize this formula to solve for Probability of Default using bootstrap method to get PD for all years, starting with year 1 all the way to year 7 (or max maturity), and use interpolation to fill in default probabilities for time we don't directly observe in the market
+
+
+<p align="left">
+  <img src="PDCurves.png", width = "800", height = "500">
+    <figcaption><i>The image shows the Default Probability curves for each counterpart</i></figcaption>
+</p>
+
+And finally using the CVA formula we calculate the value and graph the results
+
